@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PaymentDialog } from '@/components/PaymentDialog'
 import { CurrentPeriod } from '@/sections/CurrentPeriod'
 import { HistorySection } from '@/sections/HistorySection'
+import { SalarySection } from '@/sections/SalarySection'
 import { usePayments } from '@/hooks/usePayments'
 import type { Payment } from '@/types/payment'
 
@@ -24,6 +25,7 @@ export default function Home() {
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Payment | null>(null)
+  const [tab, setTab] = useState('current')
 
   return (
     <div className="mx-auto min-h-dvh w-full max-w-xl px-4 pb-28 pt-6 sm:pt-10">
@@ -37,12 +39,13 @@ export default function Home() {
         </div>
       </header>
 
-      <Tabs defaultValue="current">
-        <TabsList className="mb-5 grid w-full grid-cols-2">
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="mb-5 grid w-full grid-cols-3">
           <TabsTrigger value="current">Текущие</TabsTrigger>
           <TabsTrigger value="history">
             История{history.length > 0 ? ` (${history.length})` : ''}
           </TabsTrigger>
+          <TabsTrigger value="salary">Зарплата</TabsTrigger>
         </TabsList>
 
         <TabsContent value="current">
@@ -64,21 +67,27 @@ export default function Home() {
         <TabsContent value="history">
           <HistorySection history={history} />
         </TabsContent>
+
+        <TabsContent value="salary">
+          <SalarySection />
+        </TabsContent>
       </Tabs>
 
-      {/* Кнопка добавления */}
-      <Button
-        size="lg"
-        onClick={() => {
-          setEditing(null)
-          setDialogOpen(true)
-        }}
-        className="fixed bottom-6 right-6 z-40 h-14 gap-2 rounded-full px-6 shadow-lg"
-        aria-label="Добавить платёж"
-      >
-        <Plus className="size-5" />
-        Добавить
-      </Button>
+      {/* Кнопка добавления — только на вкладках платежей */}
+      {tab !== 'salary' && (
+        <Button
+          size="lg"
+          onClick={() => {
+            setEditing(null)
+            setDialogOpen(true)
+          }}
+          className="fixed bottom-6 right-6 z-40 h-14 gap-2 rounded-full px-6 shadow-lg"
+          aria-label="Добавить платёж"
+        >
+          <Plus className="size-5" />
+          Добавить
+        </Button>
+      )}
 
       <PaymentDialog
         open={dialogOpen}
