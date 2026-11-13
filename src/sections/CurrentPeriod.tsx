@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Check, Pencil, Trash2, RotateCcw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,14 +28,24 @@ interface CurrentPeriodProps {
   onStartNewPeriod: () => void
 }
 
-function dueStatus(payment: Payment, paid: boolean): { label: string; tone: 'ok' | 'soon' | 'overdue' | 'paid' } {
+const WEEKDAYS_RU = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
+
+const dayMonthFormatter = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
+
+function groupLabel(day: number): string {
+  const now = new Date()
+  const date = new Date(now.getFullYear(), now.getMonth(), day)
+  return `${dayMonthFormatter.format(date)} · ${WEEKDAYS_RU[date.getDay()]}`
+}
+
+function dueStatus(payment: Payment, paid: boolean): { label: string; tone: 'ok' | 'soon' | 'overdue' | 'paid' } | null {
   if (paid) return { label: 'Оплачено', tone: 'paid' }
   const today = new Date().getDate()
   const left = payment.dueDay - today
   if (left < 0) return { label: `Просрочено на ${-left} дн.`, tone: 'overdue' }
   if (left === 0) return { label: 'Оплатить сегодня', tone: 'overdue' }
   if (left <= 3) return { label: `Осталось ${left} дн.`, tone: 'soon' }
-  return { label: `До ${payment.dueDay}-го числа`, tone: 'ok' }
+  return null // дата видна в заголовке группы
 }
 
 export function CurrentPeriod({
@@ -52,6 +62,23 @@ export function CurrentPeriod({
   const [confirmDelete, setConfirmDelete] = useState<Payment | null>(null)
 
   const percent = totals.total > 0 ? Math.round((totals.paid / totals.total) * 100) : 0
+
+  // Группировка по дню оплаты с суммой по каждому дню
+  const groups = useMemo(() => {
+    const map = new Map<number, Payment[]>()
+    for (const p of payments) {
+      const list = map.get(p.dueDay) ?? []
+      list.push(p)
+      map.set(p.dueDay, list)
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([day, items]) => {
+        const total = items.reduce((s, p) => s + p.amount, 0)
+        const paidSum = items.reduce((s, p) => (paidMap[p.id] ? s + p.amount : s), 0)
+        return { day, items, total, paidSum }
+      })
+  }, [payments, paidMap])
 
   return (
     <div className="grid gap-5">
@@ -86,86 +113,128 @@ export function CurrentPeriod({
         </p>
       </section>
 
-      {/* Список платежей */}
+      {/* Список платежей, сгруппированный по дню оплаты */}
       {payments.length > 0 ? (
-        <ul className="grid gap-2">
-          {payments.map((p) => {
-            const paid = Boolean(paidMap[p.id])
-            const status = dueStatus(p, paid)
+        <div className="grid gap-4">
+          {groups.map((group) => {
+            const allPaid = group.paidSum === group.total
             return (
-              <li
-                key={p.id}
-                className={cn(
-                  'group flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-colors',
-                  paid && 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30',
-                )}
-              >
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={paid}
-                  aria-label={paid ? `Снять отметку об оплате: ${p.name}` : `Отметить оплаченным: ${p.name}`}
-                  onClick={() => onTogglePaid(p.id)}
-                  className={cn(
-                    'flex size-11 shrink-0 items-center justify-center rounded-full border-2 transition-colors cursor-pointer',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                    paid
-                      ? 'border-emerald-600 bg-emerald-600 text-white'
-                      : 'border-muted-foreground/30 bg-background hover:border-emerald-500 hover:text-emerald-600',
-                  )}
-                >
-                  <Check className={cn('size-5', !paid && 'opacity-0 group-hover:opacity-40')} />
-                </button>
-
-                <div className="min-w-0 flex-1">
-                  <p className={cn('font-medium leading-tight', paid && 'text-muted-foreground line-through')}>
-                    {p.name}
-                  </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <Badge
-                      variant="secondary"
+              <section key={group.day} aria-label={`Платежи ${group.day}-го числа`}>
+                {/* Заголовок дня с суммой */}
+                <div className="mb-1.5 flex items-baseline justify-between gap-3 px-1">
+                  <h2
+                    className={cn(
+                      'text-sm font-medium',
+                      allPaid ? 'text-muted-foreground' : 'text-foreground',
+                    )}
+                  >
+                    {groupLabel(group.day)}
+                  </h2>
+                  <p className="text-sm tabular-nums">
+                    <span
                       className={cn(
-                        'font-normal',
-                        status.tone === 'overdue' && 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
-                        status.tone === 'soon' && 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-                        status.tone === 'paid' && 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+                        'font-semibold',
+                        allPaid ? 'text-muted-foreground' : 'text-foreground',
                       )}
                     >
-                      {status.label}
-                    </Badge>
-                    {p.note && (
-                      <span className="truncate text-xs text-muted-foreground">{p.note}</span>
+                      {formatMoney(group.total)}
+                    </span>
+                    {group.paidSum > 0 && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {allPaid
+                          ? 'оплачено полностью'
+                          : `осталось ${formatMoney(group.total - group.paidSum)}`}
+                      </span>
                     )}
-                  </div>
+                  </p>
                 </div>
 
-                <p className={cn('shrink-0 text-lg font-semibold tabular-nums', paid && 'text-muted-foreground')}>
-                  {formatMoney(p.amount)}
-                </p>
+                <ul className="grid gap-2">
+                  {group.items.map((p) => {
+                    const paid = Boolean(paidMap[p.id])
+                    const status = dueStatus(p, paid)
+                    return (
+                      <li
+                        key={p.id}
+                        className={cn(
+                          'group flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-colors',
+                          paid && 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30',
+                        )}
+                      >
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={paid}
+                          aria-label={paid ? `Снять отметку об оплате: ${p.name}` : `Отметить оплаченным: ${p.name}`}
+                          onClick={() => onTogglePaid(p.id)}
+                          className={cn(
+                            'flex size-11 shrink-0 items-center justify-center rounded-full border-2 transition-colors cursor-pointer',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                            paid
+                              ? 'border-emerald-600 bg-emerald-600 text-white'
+                              : 'border-muted-foreground/30 bg-background hover:border-emerald-500 hover:text-emerald-600',
+                          )}
+                        >
+                          <Check className={cn('size-5', !paid && 'opacity-0 group-hover:opacity-40')} />
+                        </button>
 
-                <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Редактировать: ${p.name}`}
-                    onClick={() => onEdit(p)}
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Удалить: ${p.name}`}
-                    onClick={() => setConfirmDelete(p)}
-                    className="text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              </li>
+                        <div className="min-w-0 flex-1">
+                          <p className={cn('font-medium leading-tight', paid && 'text-muted-foreground line-through')}>
+                            {p.name}
+                          </p>
+                          {(status || p.note) && (
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                              {status && (
+                                <Badge
+                                  variant="secondary"
+                                  className={cn(
+                                    'font-normal',
+                                    status.tone === 'overdue' && 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+                                    status.tone === 'soon' && 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+                                    status.tone === 'paid' && 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+                                  )}
+                                >
+                                  {status.label}
+                                </Badge>
+                              )}
+                              {p.note && (
+                                <span className="truncate text-xs text-muted-foreground">{p.note}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <p className={cn('shrink-0 text-lg font-semibold tabular-nums', paid && 'text-muted-foreground')}>
+                          {formatMoney(p.amount)}
+                        </p>
+
+                        <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Редактировать: ${p.name}`}
+                            onClick={() => onEdit(p)}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Удалить: ${p.name}`}
+                            onClick={() => setConfirmDelete(p)}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
             )
           })}
-        </ul>
+        </div>
       ) : (
         <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
           <p className="text-lg font-medium text-foreground">Список пуст</p>
