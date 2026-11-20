@@ -14,6 +14,7 @@ export default function Home() {
     payments,
     paidMap,
     history,
+    periodKey,
     periodLabel,
     totals,
     addPayment,
@@ -69,7 +70,7 @@ export default function Home() {
         </TabsContent>
 
         <TabsContent value="salary">
-          <SalarySection />
+          <SalarySection payments={payments} paidMap={paidMap} periodKey={periodKey} />
         </TabsContent>
       </Tabs>
 

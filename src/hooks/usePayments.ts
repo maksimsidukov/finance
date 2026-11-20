@@ -167,6 +167,7 @@ export function usePayments() {
     payments: sortedPayments,
     paidMap: state.paidMap,
     history: state.history,
+    periodKey: state.periodKey,
     periodLabel: state.periodLabel,
     totals,
     addPayment,

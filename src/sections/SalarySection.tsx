@@ -1,6 +1,8 @@
-import { useMemo } from 'react'
-import { CalendarDays, Settings2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { CalendarDays, ChevronDown, Settings2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -12,6 +14,7 @@ import {
 } from '@/components/ui/accordion'
 import { useSalarySettings } from '@/hooks/useSalarySettings'
 import { calcYearAhead } from '@/lib/salary'
+import { calcNextSalaryBudget, type SalaryBudgetPayments } from '@/lib/salaryBudget'
 import { effectiveRate, marginalRate, taxOnCumulative } from '@/lib/ndfl'
 import { formatDate, formatMoney } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -43,9 +46,25 @@ function NumberField({
   )
 }
 
-export function SalarySection() {
+export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPayments) {
   const { settings, update } = useSalarySettings()
-  const months = useMemo(() => calcYearAhead(settings), [settings])
+  const [today, setToday] = useState(() => new Date().setHours(0, 0, 0, 0))
+
+  useEffect(() => {
+    const updateToday = () => setToday(new Date().setHours(0, 0, 0, 0))
+    const timer = window.setInterval(updateToday, 60_000)
+    window.addEventListener('focus', updateToday)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', updateToday)
+    }
+  }, [])
+
+  const months = useMemo(() => calcYearAhead(settings, new Date(today)), [settings, today])
+  const budget = useMemo(
+    () => calcNextSalaryBudget(settings, { payments, paidMap, periodKey }, new Date(today)),
+    [settings, payments, paidMap, periodKey, today],
+  )
 
   const annualGross = settings.grossSalary * 12
   const annualTax = taxOnCumulative(annualGross)
@@ -63,13 +82,60 @@ export function SalarySection() {
 
   return (
     <div className="grid gap-5">
-      {/* Настройки */}
-      <section aria-label="Настройки зарплаты" className="rounded-2xl border bg-card p-5 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <Settings2 className="size-4 text-muted-foreground" />
-          <h2 className="font-medium">Правила начисления</h2>
-        </div>
-        <div className="grid gap-4">
+      <section aria-labelledby="next-salary-heading" className="rounded-2xl border bg-card p-5 shadow-sm">
+        <h2 id="next-salary-heading" className="font-medium">Ближайшая зарплата</h2>
+        {budget ? (
+          <>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {budget.kind} · {formatDate(budget.date.toISOString())}
+            </p>
+            <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
+              {formatMoney(budget.net)}
+              <span className="ml-2 text-base font-normal text-muted-foreground">на руки</span>
+            </p>
+            <div className="mt-4 grid gap-2 border-t pt-4 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="font-medium">Обязательные платежи</h3>
+                <span className="shrink-0 font-medium tabular-nums">{formatMoney(budget.dueTotal)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Неоплаченные с этой выплаты до следующей · {formatDate(budget.nextDate.toISOString())}
+              </p>
+              {budget.duePayments.length > 0 && (
+                <ul className="grid gap-2 py-1">
+                  {budget.duePayments.map(({ payment, dueDate }) => (
+                    <li key={`${payment.id}-${dueDate.getTime()}`} className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 break-words">
+                        <div>{payment.name}</div>
+                        <div className="text-xs text-muted-foreground">{formatDate(dueDate.toISOString())}</div>
+                      </div>
+                      <span className="shrink-0 tabular-nums">{formatMoney(payment.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="mt-3 flex items-baseline justify-between gap-3 border-t pt-3 font-semibold">
+              <span>Останется после платежей</span>
+              <span className={cn('shrink-0 text-lg tabular-nums', budget.remainder < 0 && 'text-destructive')}>
+                {formatMoney(budget.remainder)}
+              </span>
+            </div>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">Укажите оклад в настройках зарплаты.</p>
+        )}
+      </section>
+
+      <Collapsible className="rounded-2xl border bg-card shadow-sm">
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" className="group h-auto w-full justify-start rounded-2xl px-5 py-4">
+            <Settings2 className="size-4 text-muted-foreground" />
+            Настройки зарплаты
+            <ChevronDown className="ml-auto size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="grid gap-4 px-5 pb-5">
           <NumberField
             id="gross"
             label="Оклад до НДФЛ, ₽"
@@ -160,8 +226,8 @@ export function SalarySection() {
               </div>
             )}
           </div>
-        </div>
-      </section>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Сводка за год */}
       <section aria-label="Сводка за год" className="rounded-2xl border bg-card p-5 shadow-sm">
