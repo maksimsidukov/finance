@@ -20,6 +20,7 @@ import { currentPeriodKey, formatDate, formatMoney, periodLabelForKey } from '@/
 import { cn } from '@/lib/utils'
 import { workingDaysInMonth } from '@/lib/workCalendar'
 import { SalaryBonuses } from '@/sections/SalaryBonuses'
+import { SalaryChanges } from '@/sections/SalaryChanges'
 
 function NumberField({
   id,
@@ -49,7 +50,7 @@ function NumberField({
 }
 
 export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPayments) {
-  const { settings, update, addBonus, removeBonus } = useSalarySettings()
+  const { settings, update, addBonus, removeBonus, saveSalaryChange, removeSalaryChange } = useSalarySettings()
   const [today, setToday] = useState(() => new Date().setHours(0, 0, 0, 0))
 
   useEffect(() => {
@@ -137,7 +138,7 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
         <CollapsibleContent className="gap-4 data-[state=open]:grid data-[state=open]:px-5 data-[state=open]:pb-5">
           <NumberField
             id="gross"
-            label="Оклад до НДФЛ, ₽"
+            label="Базовый оклад до НДФЛ, ₽"
             value={settings.grossSalary}
             onChange={(v) => update({ grossSalary: v })}
           />
@@ -225,6 +226,7 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
               </div>
             )}
           </div>
+          <SalaryChanges changes={settings.salaryChanges} onSave={saveSalaryChange} onRemove={removeSalaryChange} />
         </CollapsibleContent>
       </Collapsible>
 

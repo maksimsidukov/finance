@@ -1,14 +1,19 @@
 import { taxOnCumulative } from '@/lib/ndfl'
+import { currentPeriodKey } from '@/lib/format'
 import {
   hasExactData,
+  isWorkingDay,
   paymentDate,
-  workingDaysInMonth,
-  workingDaysInRange,
 } from '@/lib/workCalendar'
 
 export interface SalaryBonus {
   id: string
   date: string // ГГГГ-ММ-ДД в местном календаре
+  gross: number
+}
+
+export interface SalaryChange {
+  date: string // Первый день действия нового оклада, ГГГГ-ММ-ДД
   gross: number
 }
 
@@ -26,6 +31,7 @@ export interface SalarySettings {
   /** Процент оклада для режима 'percent' */
   advancePercent: number
   bonuses: SalaryBonus[]
+  salaryChanges: SalaryChange[]
 }
 
 export const DEFAULT_SALARY_SETTINGS: SalarySettings = {
@@ -36,6 +42,7 @@ export const DEFAULT_SALARY_SETTINGS: SalarySettings = {
   advanceMode: 'days',
   advancePercent: 40,
   bonuses: [],
+  salaryChanges: [],
 }
 
 interface GrossPayout {
@@ -52,12 +59,31 @@ export interface PayoutInfo extends GrossPayout {
   net: number
 }
 
-function monthlyPayouts(settings: SalarySettings, year: number, month: number): GrossPayout[] {
-  const { grossSalary } = settings
-  const advanceGross =
+function monthlyPayouts(
+  settings: SalarySettings,
+  changes: SalaryChange[],
+  year: number,
+  month: number,
+): GrossPayout[] {
+  const period = currentPeriodKey(new Date(year, month, 1))
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  let workingDays = 0
+  let grossByDay = 0
+  let advanceByDay = 0
+  for (let day = 1; day <= lastDay; day++) {
+    if (!isWorkingDay(new Date(year, month, day))) continue
+    const dayKey = `${period}-${String(day).padStart(2, '0')}`
+    const gross = changes.find((change) => change.date <= dayKey)?.gross ?? settings.grossSalary
+    workingDays++
+    grossByDay += gross
+    if (day <= 15) advanceByDay += gross
+  }
+  const grossSalary = Math.round(grossByDay * 100 / workingDays) / 100
+  const advanceGross = Math.min(grossSalary, Math.round(
     settings.advanceMode === 'days'
-      ? Math.round(grossSalary * workingDaysInRange(year, month, 1, 15) / workingDaysInMonth(year, month))
-      : Math.round((grossSalary * settings.advancePercent) / 100)
+      ? advanceByDay / workingDays
+      : grossSalary * settings.advancePercent / 100,
+  ))
   const advance = paymentDate(year, month, settings.advanceDay, 0)
   const salary = paymentDate(year, month, settings.salaryDay, settings.salaryMonthOffset)
   return [
@@ -79,6 +105,7 @@ function monthlyPayouts(settings: SalarySettings, year: number, month: number): 
 }
 
 export function calcPayouts(settings: SalarySettings, currentYear: number): PayoutInfo[] {
+  const changes = [...settings.salaryChanges].sort((a, b) => b.date.localeCompare(a.date))
   const bonuses = settings.bonuses.map((bonus): GrossPayout => ({
     ...bonus,
     date: new Date(`${bonus.date}T00:00:00`),
@@ -92,7 +119,7 @@ export function calcPayouts(settings: SalarySettings, currentYear: number): Payo
     // Декабрьский расчёт может прийти в январе, а январская выплата — в предыдущем декабре.
     const regular = Array.from({ length: 14 }, (_, index) => {
       const month = new Date(year, index - 1, 1)
-      return monthlyPayouts(settings, month.getFullYear(), month.getMonth())
+      return monthlyPayouts(settings, changes, month.getFullYear(), month.getMonth())
     }).flat()
     const payouts = [...regular, ...bonuses]
       .filter((payout) => payout.gross > 0 && payout.date.getFullYear() === year)
