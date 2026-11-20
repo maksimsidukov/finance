@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CalendarDays, ChevronDown, Settings2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,11 +13,13 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion'
 import { useSalarySettings } from '@/hooks/useSalarySettings'
-import { calcYearAhead } from '@/lib/salary'
+import { calcPayouts, summarizePayouts } from '@/lib/salary'
 import { calcNextSalaryBudget, type SalaryBudgetPayments } from '@/lib/salaryBudget'
-import { effectiveRate, marginalRate, taxOnCumulative } from '@/lib/ndfl'
-import { formatDate, formatMoney } from '@/lib/format'
+import { effectiveRate, marginalRate } from '@/lib/ndfl'
+import { currentPeriodKey, formatDate, formatMoney, periodLabelForKey } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { workingDaysInMonth } from '@/lib/workCalendar'
+import { SalaryBonuses } from '@/sections/SalaryBonuses'
 
 function NumberField({
   id,
@@ -47,7 +49,7 @@ function NumberField({
 }
 
 export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPayments) {
-  const { settings, update } = useSalarySettings()
+  const { settings, update, addBonus, removeBonus } = useSalarySettings()
   const [today, setToday] = useState(() => new Date().setHours(0, 0, 0, 0))
 
   useEffect(() => {
@@ -60,28 +62,21 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
     }
   }, [])
 
-  const months = useMemo(() => calcYearAhead(settings, new Date(today)), [settings, today])
-  const budget = useMemo(
-    () => calcNextSalaryBudget(settings, { payments, paidMap, periodKey }, new Date(today)),
-    [settings, payments, paidMap, periodKey, today],
-  )
-
-  const annualGross = settings.grossSalary * 12
-  const annualTax = taxOnCumulative(annualGross)
-  const yearTotal = useMemo(
-    () =>
-      months.reduce(
-        (acc, m) => ({
-          net: acc.net + m.net,
-          tax: acc.tax + m.tax,
-        }),
-        { net: 0, tax: 0 },
-      ),
-    [months],
-  )
+  const date = new Date(today)
+  const year = date.getFullYear()
+  const payouts = calcPayouts(settings, year)
+  const budget = calcNextSalaryBudget(payouts, { payments, paidMap, periodKey }, date)
+  const annual = summarizePayouts(payouts.filter((payout) => payout.date.getFullYear() === year))
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const month = new Date(year, date.getMonth() + index, 1)
+    const key = currentPeriodKey(month)
+    const items = payouts.filter((payout) => currentPeriodKey(payout.date) === key)
+    return { key, items, workingDays: workingDaysInMonth(month.getFullYear(), month.getMonth()), ...summarizePayouts(items) }
+  })
+  const yearTotal = summarizePayouts(months.flatMap((month) => month.items))
 
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-1 gap-5">
       <section aria-labelledby="next-salary-heading" className="rounded-2xl border bg-card p-5 shadow-sm">
         <h2 id="next-salary-heading" className="font-medium">Ближайшая зарплата</h2>
         {budget ? (
@@ -93,34 +88,38 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
               {formatMoney(budget.net)}
               <span className="ml-2 text-base font-normal text-muted-foreground">на руки</span>
             </p>
-            <div className="mt-4 grid gap-2 border-t pt-4 text-sm">
-              <div className="flex items-baseline justify-between gap-3">
-                <h3 className="font-medium">Обязательные платежи</h3>
-                <span className="shrink-0 font-medium tabular-nums">{formatMoney(budget.dueTotal)}</span>
+            {budget.nextDate ? (
+              <div className="mt-4 grid gap-2 border-t pt-4 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 className="font-medium">Обязательные платежи</h3>
+                  <span className="shrink-0 font-medium tabular-nums">{formatMoney(budget.dueTotal)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Неоплаченные с этой выплаты до следующей · {formatDate(budget.nextDate.toISOString())}
+                </p>
+                {budget.duePayments.length > 0 && (
+                  <ul className="grid gap-2 py-1">
+                    {budget.duePayments.map(({ payment, dueDate }) => (
+                      <li key={`${payment.id}-${dueDate.getTime()}`} className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 break-words">
+                          <div>{payment.name}</div>
+                          <div className="text-xs text-muted-foreground">{formatDate(dueDate.toISOString())}</div>
+                        </div>
+                        <span className="shrink-0 tabular-nums">{formatMoney(payment.amount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-1 flex items-baseline justify-between gap-3 border-t pt-3 font-semibold">
+                  <span>Останется после платежей</span>
+                  <span className={cn('shrink-0 text-lg tabular-nums', budget.remainder < 0 && 'text-destructive')}>
+                    {formatMoney(budget.remainder)}
+                  </span>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Неоплаченные с этой выплаты до следующей · {formatDate(budget.nextDate.toISOString())}
-              </p>
-              {budget.duePayments.length > 0 && (
-                <ul className="grid gap-2 py-1">
-                  {budget.duePayments.map(({ payment, dueDate }) => (
-                    <li key={`${payment.id}-${dueDate.getTime()}`} className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 break-words">
-                        <div>{payment.name}</div>
-                        <div className="text-xs text-muted-foreground">{formatDate(dueDate.toISOString())}</div>
-                      </div>
-                      <span className="shrink-0 tabular-nums">{formatMoney(payment.amount)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="mt-3 flex items-baseline justify-between gap-3 border-t pt-3 font-semibold">
-              <span>Останется после платежей</span>
-              <span className={cn('shrink-0 text-lg tabular-nums', budget.remainder < 0 && 'text-destructive')}>
-                {formatMoney(budget.remainder)}
-              </span>
-            </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">Следующая выплата пока не запланирована.</p>
+            )}
           </>
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">Укажите оклад в настройках зарплаты.</p>
@@ -135,7 +134,7 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
             <ChevronDown className="ml-auto size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
           </Button>
         </CollapsibleTrigger>
-        <CollapsibleContent className="grid gap-4 px-5 pb-5">
+        <CollapsibleContent className="gap-4 data-[state=open]:grid data-[state=open]:px-5 data-[state=open]:pb-5">
           <NumberField
             id="gross"
             label="Оклад до НДФЛ, ₽"
@@ -229,22 +228,24 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
         </CollapsibleContent>
       </Collapsible>
 
+      <SalaryBonuses payouts={payouts.filter((payout) => payout.kind === 'Премия')} onAdd={addBonus} onRemove={removeBonus} />
+
       {/* Сводка за год */}
       <section aria-label="Сводка за год" className="rounded-2xl border bg-card p-5 shadow-sm">
-        <p className="text-sm text-muted-foreground">Годовой доход и НДФЛ (нарастающим итогом с января)</p>
+        <p className="text-sm text-muted-foreground">Доход и НДФЛ за {year} год</p>
         <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
-          {formatMoney(annualGross - annualTax)}
+          {formatMoney(annual.net)}
           <span className="ml-2 text-base font-normal text-muted-foreground">на руки за год</span>
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Badge variant="secondary" className="font-normal">
-            НДФЛ за год: {formatMoney(annualTax)}
+            НДФЛ за год: {formatMoney(annual.tax)}
           </Badge>
           <Badge variant="secondary" className="font-normal">
-            Эффективная ставка: {(effectiveRate(annualGross) * 100).toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%
+            Эффективная ставка: {(effectiveRate(annual.gross) * 100).toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%
           </Badge>
           <Badge variant="secondary" className="font-normal">
-            Максимальная ставка: {marginalRate(annualGross) * 100}%
+            Максимальная ставка: {marginalRate(annual.gross) * 100}%
           </Badge>
         </div>
       </section>
@@ -258,17 +259,17 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
         <Accordion type="multiple" className="grid gap-2">
           {months.map((m) => (
             <AccordionItem
-              key={`${m.year}-${m.month}`}
-              value={`${m.year}-${m.month}`}
+              key={m.key}
+              value={m.key}
               className="rounded-2xl border bg-card px-4 shadow-sm"
             >
               <AccordionTrigger className="py-4 hover:no-underline">
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-left">
-                  <span className="font-medium">{m.label}</span>
+                  <span className="font-medium">{periodLabelForKey(m.key)}</span>
                   <span className="text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
                     {formatMoney(m.net)}
                   </span>
-                  {m.approximateCalendar && (
+                  {m.items.some((payout) => payout.approximateCalendar) && (
                     <Badge variant="secondary" className="font-normal text-amber-800 bg-amber-100 dark:bg-amber-950 dark:text-amber-300">
                       календарь примерный
                     </Badge>
@@ -277,28 +278,20 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
               </AccordionTrigger>
               <AccordionContent>
                 <div className="grid gap-1 pb-2 text-sm">
-                  <div className="flex items-baseline justify-between gap-3 rounded-lg px-2 py-2">
-                    <span>
-                      Аванс · {formatDate(m.advance.date.toISOString())}
-                      {m.advance.shifted && (
-                        <span className="ml-1 text-xs text-muted-foreground">(перенесён на рабочий день)</span>
-                      )}
-                    </span>
-                    <span className="shrink-0 font-medium tabular-nums">{formatMoney(m.advance.net)}</span>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-3 rounded-lg px-2 py-2">
-                    <span>
-                      Расчёт · {formatDate(m.salary.date.toISOString())}
-                      {m.salary.shifted && (
-                        <span className="ml-1 text-xs text-muted-foreground">(перенесён на рабочий день)</span>
-                      )}
-                    </span>
-                    <span className="shrink-0 font-medium tabular-nums">{formatMoney(m.salary.net)}</span>
-                  </div>
+                  {m.items.map((payout) => (
+                    <div key={payout.id} className="flex flex-wrap items-baseline justify-between gap-x-3 rounded-lg px-2 py-2">
+                      <div>
+                        <p>
+                          {payout.kind} · {formatDate(payout.date.toISOString())}
+                          {payout.shifted && <span className="ml-1 text-xs text-muted-foreground">(перенос)</span>}
+                        </p>
+                        <p className="text-xs text-muted-foreground">НДФЛ {formatMoney(payout.tax)}</p>
+                      </div>
+                      <span className="font-medium tabular-nums">{formatMoney(payout.net)}</span>
+                    </div>
+                  ))}
                   <p className="border-t px-2 pt-2 text-xs text-muted-foreground">
-                    Рабочих дней: {m.workingDays} · Начислено: {formatMoney(m.gross)} · НДФЛ:{' '}
-                    {formatMoney(m.tax)} (аванс {formatMoney(m.advance.tax)}, расчёт{' '}
-                    {formatMoney(m.salary.tax)})
+                    Рабочих дней {m.workingDays} · До налога {formatMoney(m.gross)} · НДФЛ {formatMoney(m.tax)}
                   </p>
                 </div>
               </AccordionContent>
@@ -307,8 +300,7 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
         </Accordion>
         <p className="mt-3 px-1 text-xs text-muted-foreground">
           Итого за 12 месяцев: {formatMoney(yearTotal.net)} на руки, НДФЛ {formatMoney(yearTotal.tax)}.
-          Налог считается нарастающим итогом с января по пятиступенчатой шкале 13–22% (ФЗ № 176-ФЗ);
-          если день выплаты — выходной или праздник, деньгами считается предыдущий рабочий день (ст. 136 ТК РФ).
+          НДФЛ рассчитан по датам выплат нарастающим итогом с января по шкале 13–22%.
         </p>
       </section>
     </div>

@@ -1,48 +1,28 @@
 import { currentPeriodKey } from '@/lib/format'
-import { calcMonth, type SalarySettings } from '@/lib/salary'
+import { summarizePayouts, type PayoutInfo } from '@/lib/salary'
 import type { PaymentsState } from '@/types/payment'
 
 export type SalaryBudgetPayments = Pick<PaymentsState, 'payments' | 'paidMap' | 'periodKey'>
 
 export function calcNextSalaryBudget(
-  settings: SalarySettings,
+  payouts: PayoutInfo[],
   { payments, paidMap, periodKey }: SalaryBudgetPayments,
   today: Date,
 ) {
-  const year = today.getFullYear()
-  const month = today.getMonth()
-  const startOfToday = new Date(year, month, today.getDate())
-
-  // Расчёт за прошлый месяц может прийти в текущем, а будущая выплата — сдвинуться на месяц назад.
-  const payouts = [-1, 0, 1, 2]
-    .flatMap((offset) => {
-      const date = new Date(year, month + offset, 1)
-      const { advance, salary } = calcMonth(settings, date.getFullYear(), date.getMonth())
-      return [
-        { ...advance, kind: 'Аванс' },
-        { ...salary, kind: 'Расчёт' },
-      ]
-    })
-    .filter((payout) => payout.net > 0 && payout.date >= startOfToday)
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-
-  const first = payouts[0]
+  const upcoming = payouts.filter((payout) => payout.net > 0 && payout.date >= today)
+  const first = upcoming[0]
   if (!first) return null
 
   const date = first.date
-  const sameDay = payouts.filter((payout) => payout.date.getTime() === date.getTime())
-  const following = payouts.find((payout) => payout.date > date)
-  if (!following) return null
-
-  const nextDate = following.date
-  const net = sameDay.reduce((total, payout) => total + payout.net, 0)
-  const kind = new Set(sameDay.map((payout) => payout.kind)).size > 1
-    ? 'Аванс и расчёт'
-    : first.kind
+  const sameDay = upcoming.filter((payout) => payout.date.getTime() === date.getTime())
+  const nextDate = upcoming.find((payout) => payout.date > date)?.date ?? null
+  const { net } = summarizePayouts(sameDay)
+  const kinds = [...new Set(sameDay.map((payout) => payout.kind))]
+  const kind = new Intl.ListFormat('ru').format(kinds.map((name, index) => index === 0 ? name : name.toLowerCase()))
 
   const duePayments = []
   const dueMonth = new Date(date.getFullYear(), date.getMonth(), 1)
-  while (dueMonth < nextDate) {
+  while (nextDate && dueMonth < nextDate) {
     const dueYear = dueMonth.getFullYear()
     const monthIndex = dueMonth.getMonth()
     const lastDay = new Date(dueYear, monthIndex + 1, 0).getDate()
@@ -59,5 +39,5 @@ export function calcNextSalaryBudget(
   duePayments.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
   const dueCents = duePayments.reduce((total, { payment }) => total + Math.round(payment.amount * 100), 0)
 
-  return { date, nextDate, kind, net, duePayments, dueTotal: dueCents / 100, remainder: (net * 100 - dueCents) / 100 }
+  return { date, nextDate, kind, net, duePayments, dueTotal: dueCents / 100, remainder: (Math.round(net * 100) - dueCents) / 100 }
 }

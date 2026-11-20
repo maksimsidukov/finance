@@ -1,11 +1,16 @@
-import { taxForMonth, taxForSlice } from '@/lib/ndfl'
-import { periodLabelForKey } from '@/lib/format'
+import { taxOnCumulative } from '@/lib/ndfl'
 import {
   hasExactData,
   paymentDate,
   workingDaysInMonth,
   workingDaysInRange,
 } from '@/lib/workCalendar'
+
+export interface SalaryBonus {
+  id: string
+  date: string // ГГГГ-ММ-ДД в местном календаре
+  gross: number
+}
 
 export interface SalarySettings {
   /** Оклад до НДФЛ, ₽/мес */
@@ -20,6 +25,7 @@ export interface SalarySettings {
   advanceMode: 'days' | 'percent'
   /** Процент оклада для режима 'percent' */
   advancePercent: number
+  bonuses: SalaryBonus[]
 }
 
 export const DEFAULT_SALARY_SETTINGS: SalarySettings = {
@@ -29,89 +35,89 @@ export const DEFAULT_SALARY_SETTINGS: SalarySettings = {
   salaryMonthOffset: 1,
   advanceMode: 'days',
   advancePercent: 40,
+  bonuses: [],
 }
 
-export interface PayoutInfo {
+interface GrossPayout {
+  id: string
   date: Date
+  kind: 'Аванс' | 'Расчёт' | 'Премия'
   shifted: boolean
   gross: number
-  tax: number
-  net: number
-}
-
-export interface MonthSalary {
-  year: number
-  month: number // 0–11
-  label: string
-  workingDays: number
-  advance: PayoutInfo
-  salary: PayoutInfo
-  gross: number
-  tax: number
-  net: number
-  /** Календарь года приблизительный (нет постановления о переносах) */
   approximateCalendar: boolean
 }
 
-/** Расчёт одного месяца */
-export function calcMonth(
-  settings: SalarySettings,
-  year: number,
-  month: number,
-): MonthSalary {
-  const { grossSalary } = settings
-  const wdTotal = workingDaysInMonth(year, month)
-  const wdFirstHalf = workingDaysInRange(year, month, 1, 15)
-  const monthIndex = month // нарастающий итог с января
-
-  // Аванс (за 1–15 число)
-  const advanceGross =
-    settings.advanceMode === 'days'
-      ? Math.round((grossSalary * wdFirstHalf) / wdTotal)
-      : Math.round((grossSalary * settings.advancePercent) / 100)
-  const advanceTax = taxForSlice(grossSalary, monthIndex, 0, advanceGross)
-  const advancePay = paymentDate(year, month, settings.advanceDay, 0)
-
-  // Расчёт (за 16 — конец месяца / остаток)
-  const salaryGross = grossSalary - advanceGross
-  const monthTax = taxForMonth(grossSalary, monthIndex)
-  const salaryTax = monthTax - advanceTax
-  const salaryPay = paymentDate(year, month, settings.salaryDay, settings.salaryMonthOffset)
-
-  return {
-    year,
-    month,
-    label: periodLabelForKey(`${year}-${String(month + 1).padStart(2, '0')}`),
-    workingDays: wdTotal,
-    advance: {
-      date: advancePay.date,
-      shifted: advancePay.shifted,
-      gross: advanceGross,
-      tax: advanceTax,
-      net: advanceGross - advanceTax,
-    },
-    salary: {
-      date: salaryPay.date,
-      shifted: salaryPay.shifted,
-      gross: salaryGross,
-      tax: salaryTax,
-      net: salaryGross - salaryTax,
-    },
-    gross: grossSalary,
-    tax: monthTax,
-    net: grossSalary - monthTax,
-    approximateCalendar:
-      !hasExactData(year) ||
-      (settings.salaryMonthOffset === 1 && !hasExactData(salaryPay.date.getFullYear())),
-  }
+export interface PayoutInfo extends GrossPayout {
+  tax: number
+  net: number
 }
 
-/** Расчёт на 12 месяцев вперёд от указанной даты */
-export function calcYearAhead(settings: SalarySettings, from = new Date()): MonthSalary[] {
-  const result: MonthSalary[] = []
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(from.getFullYear(), from.getMonth() + i, 1)
-    result.push(calcMonth(settings, d.getFullYear(), d.getMonth()))
-  }
-  return result
+function monthlyPayouts(settings: SalarySettings, year: number, month: number): GrossPayout[] {
+  const { grossSalary } = settings
+  const advanceGross =
+    settings.advanceMode === 'days'
+      ? Math.round(grossSalary * workingDaysInRange(year, month, 1, 15) / workingDaysInMonth(year, month))
+      : Math.round((grossSalary * settings.advancePercent) / 100)
+  const advance = paymentDate(year, month, settings.advanceDay, 0)
+  const salary = paymentDate(year, month, settings.salaryDay, settings.salaryMonthOffset)
+  return [
+    {
+      ...advance,
+      id: `advance-${year}-${month}`,
+      kind: 'Аванс',
+      gross: advanceGross,
+      approximateCalendar: !hasExactData(year) || !hasExactData(advance.date.getFullYear()),
+    },
+    {
+      ...salary,
+      id: `salary-${year}-${month}`,
+      kind: 'Расчёт',
+      gross: grossSalary - advanceGross,
+      approximateCalendar: !hasExactData(year) || !hasExactData(salary.date.getFullYear()),
+    },
+  ]
+}
+
+export function calcPayouts(settings: SalarySettings, currentYear: number): PayoutInfo[] {
+  const bonuses = settings.bonuses.map((bonus): GrossPayout => ({
+    ...bonus,
+    date: new Date(`${bonus.date}T00:00:00`),
+    kind: 'Премия',
+    shifted: false,
+    approximateCalendar: false,
+  }))
+  const years = new Set([currentYear, currentYear + 1, ...bonuses.map((bonus) => bonus.date.getFullYear())])
+
+  return [...years].sort((a, b) => a - b).flatMap((year) => {
+    // Декабрьский расчёт может прийти в январе, а январская выплата — в предыдущем декабре.
+    const regular = Array.from({ length: 14 }, (_, index) => {
+      const month = new Date(year, index - 1, 1)
+      return monthlyPayouts(settings, month.getFullYear(), month.getMonth())
+    }).flat()
+    const payouts = [...regular, ...bonuses]
+      .filter((payout) => payout.gross > 0 && payout.date.getFullYear() === year)
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+    let grossCents = 0
+    let cumulativeTax = 0
+    return payouts.map((payout) => {
+      const payoutCents = Math.round(payout.gross * 100)
+      grossCents += payoutCents
+      const nextTax = taxOnCumulative(grossCents / 100)
+      const tax = nextTax - cumulativeTax
+      cumulativeTax = nextTax
+      return { ...payout, tax, net: (payoutCents - tax * 100) / 100 }
+    })
+  })
+}
+
+export function summarizePayouts(payouts: PayoutInfo[]) {
+  const totals = payouts.reduce(
+    (sum, payout) => ({
+      grossCents: sum.grossCents + Math.round(payout.gross * 100),
+      tax: sum.tax + payout.tax,
+    }),
+    { grossCents: 0, tax: 0 },
+  )
+  return { gross: totals.grossCents / 100, tax: totals.tax, net: (totals.grossCents - totals.tax * 100) / 100 }
 }

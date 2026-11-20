@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { DEFAULT_SALARY_SETTINGS, type SalarySettings } from '@/lib/salary'
+import { DEFAULT_SALARY_SETTINGS, type SalaryBonus, type SalarySettings } from '@/lib/salary'
 
 const STORAGE_KEY = 'mandatory-payments/salary/v1'
 
@@ -8,7 +8,7 @@ function load(): SalarySettings {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return DEFAULT_SALARY_SETTINGS
     const parsed = JSON.parse(raw) as Partial<SalarySettings>
-    return { ...DEFAULT_SALARY_SETTINGS, ...parsed }
+    return { ...DEFAULT_SALARY_SETTINGS, ...parsed, bonuses: Array.isArray(parsed.bonuses) ? parsed.bonuses : [] }
   } catch {
     return DEFAULT_SALARY_SETTINGS
   }
@@ -29,5 +29,13 @@ export function useSalarySettings() {
     setSettings((s) => ({ ...s, ...patch }))
   }, [])
 
-  return { settings, update }
+  const addBonus = useCallback((bonus: SalaryBonus) => {
+    setSettings((s) => ({ ...s, bonuses: [...s.bonuses, bonus] }))
+  }, [])
+
+  const removeBonus = useCallback((id: string) => {
+    setSettings((s) => ({ ...s, bonuses: s.bonuses.filter((bonus) => bonus.id !== id) }))
+  }, [])
+
+  return { settings, update, addBonus, removeBonus }
 }

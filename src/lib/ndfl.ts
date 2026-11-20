@@ -37,21 +37,6 @@ export function taxOnCumulative(annualIncome: number): number {
   return Math.round(tax)
 }
 
-/**
- * НДФЛ за конкретный месяц при равномерной зарплате:
- * разница налога нарастающим итогом на конец и на начало месяца.
- * @param monthIndex 0 = январь
- */
-export function taxForMonth(monthlyGross: number, monthIndex: number): number {
-  return taxOnCumulative(monthlyGross * (monthIndex + 1)) - taxOnCumulative(monthlyGross * monthIndex)
-}
-
-/** НДФЛ с части дохода (например, аванса) внутри месяца — нарастающим итогом */
-export function taxForSlice(monthlyGross: number, monthIndex: number, sliceFrom: number, sliceTo: number): number {
-  const base = monthlyGross * monthIndex
-  return taxOnCumulative(base + sliceTo) - taxOnCumulative(base + sliceFrom)
-}
-
 /** Маржинальная ставка НДФЛ при данном годовом доходе */
 export function marginalRate(annualIncome: number): number {
   for (let i = BRACKETS.length - 1; i >= 0; i--) {
