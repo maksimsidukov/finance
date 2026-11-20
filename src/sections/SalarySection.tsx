@@ -13,7 +13,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion'
 import { useSalarySettings } from '@/hooks/useSalarySettings'
-import { calcPayouts, summarizePayouts } from '@/lib/salary'
+import { calcPayouts, salaryOnDate, summarizePayouts } from '@/lib/salary'
 import { calcNextSalaryBudget, type SalaryBudgetPayments } from '@/lib/salaryBudget'
 import { effectiveRate, marginalRate } from '@/lib/ndfl'
 import { currentPeriodKey, formatDate, formatMoney, periodLabelForKey } from '@/lib/format'
@@ -31,7 +31,7 @@ function NumberField({
   id: string
   label: string
   value: number
-  onChange: (v: number) => void
+  onChange?: (v: number) => void
 }) {
   return (
     <div className="grid gap-2">
@@ -40,9 +40,10 @@ function NumberField({
         id={id}
         inputMode="numeric"
         value={String(value)}
+        readOnly={!onChange}
         onChange={(e) => {
           const v = Number(e.target.value.replace(/[^\d]/g, ''))
-          if (Number.isFinite(v)) onChange(v)
+          if (Number.isFinite(v)) onChange?.(v)
         }}
       />
     </div>
@@ -64,6 +65,7 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
   }, [])
 
   const date = new Date(today)
+  const hasSalaryHistory = settings.salaryChanges.length > 0
   const year = date.getFullYear()
   const payouts = calcPayouts(settings, year)
   const budget = calcNextSalaryBudget(payouts, { payments, paidMap, periodKey }, date)
@@ -138,9 +140,9 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
         <CollapsibleContent className="gap-4 data-[state=open]:grid data-[state=open]:px-5 data-[state=open]:pb-5">
           <NumberField
             id="gross"
-            label="Базовый оклад до НДФЛ, ₽"
-            value={settings.grossSalary}
-            onChange={(v) => update({ grossSalary: v })}
+            label="Текущий оклад до НДФЛ, ₽"
+            value={salaryOnDate(settings, date)}
+            onChange={hasSalaryHistory ? undefined : (v) => update({ grossSalary: v })}
           />
           <div className="grid grid-cols-2 gap-4">
             <NumberField
@@ -226,6 +228,14 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
               </div>
             )}
           </div>
+          {hasSalaryHistory && (
+            <NumberField
+              id="base-gross"
+              label="Базовый оклад до первого изменения, ₽"
+              value={settings.grossSalary}
+              onChange={(v) => update({ grossSalary: v })}
+            />
+          )}
           <SalaryChanges changes={settings.salaryChanges} onSave={saveSalaryChange} onRemove={removeSalaryChange} />
         </CollapsibleContent>
       </Collapsible>

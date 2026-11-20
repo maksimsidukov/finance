@@ -59,21 +59,26 @@ export interface PayoutInfo extends GrossPayout {
   net: number
 }
 
-function monthlyPayouts(
-  settings: SalarySettings,
-  changes: SalaryChange[],
-  year: number,
-  month: number,
-): GrossPayout[] {
-  const period = currentPeriodKey(new Date(year, month, 1))
+export function salaryOnDate(settings: SalarySettings, date: Date): number {
+  const dayKey = `${currentPeriodKey(date)}-${String(date.getDate()).padStart(2, '0')}`
+  let effectiveChange: SalaryChange | undefined
+  for (const change of settings.salaryChanges) {
+    if (change.date <= dayKey && (!effectiveChange || change.date > effectiveChange.date)) {
+      effectiveChange = change
+    }
+  }
+  return effectiveChange?.gross ?? settings.grossSalary
+}
+
+function monthlyPayouts(settings: SalarySettings, year: number, month: number): GrossPayout[] {
   const lastDay = new Date(year, month + 1, 0).getDate()
   let workingDays = 0
   let grossByDay = 0
   let advanceByDay = 0
   for (let day = 1; day <= lastDay; day++) {
-    if (!isWorkingDay(new Date(year, month, day))) continue
-    const dayKey = `${period}-${String(day).padStart(2, '0')}`
-    const gross = changes.find((change) => change.date <= dayKey)?.gross ?? settings.grossSalary
+    const date = new Date(year, month, day)
+    if (!isWorkingDay(date)) continue
+    const gross = salaryOnDate(settings, date)
     workingDays++
     grossByDay += gross
     if (day <= 15) advanceByDay += gross
@@ -105,7 +110,6 @@ function monthlyPayouts(
 }
 
 export function calcPayouts(settings: SalarySettings, currentYear: number): PayoutInfo[] {
-  const changes = [...settings.salaryChanges].sort((a, b) => b.date.localeCompare(a.date))
   const bonuses = settings.bonuses.map((bonus): GrossPayout => ({
     ...bonus,
     date: new Date(`${bonus.date}T00:00:00`),
@@ -119,7 +123,7 @@ export function calcPayouts(settings: SalarySettings, currentYear: number): Payo
     // Декабрьский расчёт может прийти в январе, а январская выплата — в предыдущем декабре.
     const regular = Array.from({ length: 14 }, (_, index) => {
       const month = new Date(year, index - 1, 1)
-      return monthlyPayouts(settings, changes, month.getFullYear(), month.getMonth())
+      return monthlyPayouts(settings, month.getFullYear(), month.getMonth())
     }).flat()
     const payouts = [...regular, ...bonuses]
       .filter((payout) => payout.gross > 0 && payout.date.getFullYear() === year)
