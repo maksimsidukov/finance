@@ -29,10 +29,18 @@ const EXTRA_DAYS_OFF: Record<number, Array<[number, number]>> = {
     [1, 9],
     [12, 31],
   ],
+  // Постановление Правительства РФ от 17.09.2026 № 1187.
+  2027: [
+    [2, 22],
+    [11, 5],
+    [12, 31],
+  ],
 }
 
-/** Перенесённые РАБОЧИЕ дни (рабочие субботы) по годам — в 2026 их нет */
-const EXTRA_WORKING_DAYS: Record<number, Array<[number, number]>> = {}
+/** Перенесённые рабочие дни по годам */
+const EXTRA_WORKING_DAYS: Record<number, Array<[number, number]>> = {
+  2027: [[2, 20]],
+}
 
 function key(y: number, m: number, d: number): string {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
