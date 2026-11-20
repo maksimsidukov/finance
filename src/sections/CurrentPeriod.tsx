@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Check, Pencil, Trash2, RotateCcw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -63,22 +63,20 @@ export function CurrentPeriod({
 
   const percent = totals.total > 0 ? Math.round((totals.paid / totals.total) * 100) : 0
 
-  // Группировка по дню оплаты с суммой по каждому дню
+  // Сначала неоплаченные, внутри каждого статуса — по дню оплаты.
   const groups = useMemo(() => {
-    const map = new Map<number, Payment[]>()
+    const map = new Map<string, { day: number; paid: boolean; items: Payment[]; total: number }>()
     for (const p of payments) {
-      const list = map.get(p.dueDay) ?? []
-      list.push(p)
-      map.set(p.dueDay, list)
+      const paid = Boolean(paidMap[p.id])
+      const key = `${paid}-${p.dueDay}`
+      const group = map.get(key) ?? { day: p.dueDay, paid, items: [], total: 0 }
+      group.items.push(p)
+      group.total += p.amount
+      map.set(key, group)
     }
-    return [...map.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([day, items]) => {
-        const total = items.reduce((s, p) => s + p.amount, 0)
-        const paidSum = items.reduce((s, p) => (paidMap[p.id] ? s + p.amount : s), 0)
-        return { day, items, total, paidSum }
-      })
+    return [...map.values()].sort((a, b) => Number(a.paid) - Number(b.paid) || a.day - b.day)
   }, [payments, paidMap])
+  const firstPaidGroup = groups.findIndex((group) => group.paid)
 
   return (
     <div className="grid grid-cols-1 gap-5">
@@ -116,42 +114,33 @@ export function CurrentPeriod({
       {/* Список платежей, сгруппированный по дню оплаты */}
       {payments.length > 0 ? (
         <div className="grid grid-cols-1 gap-4">
-          {groups.map((group) => {
-            const allPaid = group.paidSum === group.total
-            return (
-              <section key={group.day} aria-label={`Платежи ${group.day}-го числа`}>
+          {groups.map((group, index) => (
+            <Fragment key={`${group.paid}-${group.day}`}>
+              {index === firstPaidGroup && (
+                <h2 className="px-1 text-sm font-medium text-muted-foreground">Оплаченные платежи</h2>
+              )}
+              <section aria-label={`${group.paid ? 'Оплаченные' : 'Неоплаченные'} платежи ${group.day}-го числа`}>
                 {/* Заголовок дня с суммой */}
                 <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1">
                   <h2
                     className={cn(
                       'text-sm font-medium',
-                      allPaid ? 'text-muted-foreground' : 'text-foreground',
+                      group.paid ? 'text-muted-foreground' : 'text-foreground',
                     )}
                   >
                     {groupLabel(group.day)}
                   </h2>
-                  <p className="min-w-0 text-sm tabular-nums [overflow-wrap:anywhere]">
-                    <span
-                      className={cn(
-                        'font-semibold',
-                        allPaid ? 'text-muted-foreground' : 'text-foreground',
-                      )}
-                    >
-                      {formatMoney(group.total)}
-                    </span>
-                    {group.paidSum > 0 && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {allPaid
-                          ? 'оплачено полностью'
-                          : `осталось ${formatMoney(group.total - group.paidSum)}`}
-                      </span>
-                    )}
+                  <p className={cn(
+                    'min-w-0 text-sm font-semibold tabular-nums [overflow-wrap:anywhere]',
+                    group.paid ? 'text-muted-foreground' : 'text-foreground',
+                  )}>
+                    {formatMoney(group.total)}
                   </p>
                 </div>
 
                 <ul className="grid grid-cols-1 gap-2">
                   {group.items.map((p) => {
-                    const paid = Boolean(paidMap[p.id])
+                    const paid = group.paid
                     const status = dueStatus(p, paid)
                     return (
                       <li
@@ -235,8 +224,8 @@ export function CurrentPeriod({
                   })}
                 </ul>
               </section>
-            )
-          })}
+            </Fragment>
+          ))}
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
