@@ -81,11 +81,11 @@ export function CurrentPeriod({
   }, [payments, paidMap])
 
   return (
-    <div className="grid gap-5">
+    <div className="grid grid-cols-1 gap-5">
       {/* Сводка по периоду */}
       <section aria-label="Сводка по периоду" className="rounded-2xl border bg-card p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <div className="min-w-0 [overflow-wrap:anywhere]">
             <p className="text-sm text-muted-foreground">{periodLabel}</p>
             <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
               {formatMoney(totals.paid)}
@@ -115,13 +115,13 @@ export function CurrentPeriod({
 
       {/* Список платежей, сгруппированный по дню оплаты */}
       {payments.length > 0 ? (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-1 gap-4">
           {groups.map((group) => {
             const allPaid = group.paidSum === group.total
             return (
               <section key={group.day} aria-label={`Платежи ${group.day}-го числа`}>
                 {/* Заголовок дня с суммой */}
-                <div className="mb-1.5 flex items-baseline justify-between gap-3 px-1">
+                <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1">
                   <h2
                     className={cn(
                       'text-sm font-medium',
@@ -130,7 +130,7 @@ export function CurrentPeriod({
                   >
                     {groupLabel(group.day)}
                   </h2>
-                  <p className="text-sm tabular-nums">
+                  <p className="min-w-0 text-sm tabular-nums [overflow-wrap:anywhere]">
                     <span
                       className={cn(
                         'font-semibold',
@@ -149,7 +149,7 @@ export function CurrentPeriod({
                   </p>
                 </div>
 
-                <ul className="grid gap-2">
+                <ul className="grid grid-cols-1 gap-2">
                   {group.items.map((p) => {
                     const paid = Boolean(paidMap[p.id])
                     const status = dueStatus(p, paid)
@@ -157,7 +157,7 @@ export function CurrentPeriod({
                       <li
                         key={p.id}
                         className={cn(
-                          'group flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-colors',
+                          'group grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-2xl border bg-card p-4 shadow-sm transition-colors sm:flex',
                           paid && 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30',
                         )}
                       >
@@ -168,7 +168,7 @@ export function CurrentPeriod({
                           aria-label={paid ? `Снять отметку об оплате: ${p.name}` : `Отметить оплаченным: ${p.name}`}
                           onClick={() => onTogglePaid(p.id)}
                           className={cn(
-                            'flex size-11 shrink-0 items-center justify-center rounded-full border-2 transition-colors cursor-pointer',
+                            'row-span-2 flex size-11 shrink-0 items-center justify-center rounded-full border-2 transition-colors cursor-pointer',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                             paid
                               ? 'border-emerald-600 bg-emerald-600 text-white'
@@ -178,8 +178,8 @@ export function CurrentPeriod({
                           <Check className={cn('size-5', !paid && 'opacity-0 group-hover:opacity-40')} />
                         </button>
 
-                        <div className="min-w-0 flex-1">
-                          <p className={cn('font-medium leading-tight', paid && 'text-muted-foreground line-through')}>
+                        <div className="col-start-2 min-w-0 flex-1">
+                          <p className={cn('font-medium leading-tight [overflow-wrap:anywhere]', paid && 'text-muted-foreground line-through')}>
                             {p.name}
                           </p>
                           {(status || p.note) && (
@@ -204,11 +204,14 @@ export function CurrentPeriod({
                           )}
                         </div>
 
-                        <p className={cn('shrink-0 text-lg font-semibold tabular-nums', paid && 'text-muted-foreground')}>
+                        <p className={cn(
+                          'col-start-2 row-start-2 min-w-0 text-lg font-semibold tabular-nums [overflow-wrap:anywhere] sm:max-w-[40%] sm:shrink-0',
+                          paid && 'text-muted-foreground',
+                        )}>
                           {formatMoney(p.amount)}
                         </p>
 
-                        <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
+                        <div className="col-start-3 row-span-2 row-start-1 flex shrink-0 flex-col gap-1 sm:flex-row">
                           <Button
                             variant="ghost"
                             size="icon"
