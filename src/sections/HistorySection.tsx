@@ -6,11 +6,18 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import type { PeriodSnapshot } from '@/types/payment'
 import { formatDate, formatMoney, pluralPayments } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-export function HistorySection({ history }: { history: PeriodSnapshot[] }) {
+interface HistorySectionProps {
+  history: PeriodSnapshot[]
+  periodKey: string
+  onSettle: (key: string, paymentId: string, settled: boolean) => void
+}
+
+export function HistorySection({ history, periodKey, onSettle }: HistorySectionProps) {
   if (history.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
@@ -23,11 +30,12 @@ export function HistorySection({ history }: { history: PeriodSnapshot[] }) {
   }
 
   return (
-    <Accordion type="multiple" className="grid gap-2">
+    <Accordion type="multiple" className="grid grid-cols-1 gap-2">
       {history.map((period) => {
         const total = period.items.reduce((s, i) => s + i.amount, 0)
-        const paid = period.items.reduce((s, i) => (i.paid ? s + i.amount : s), 0)
-        const paidCount = period.items.filter((i) => i.paid).length
+        const paidItems = period.items.filter((item) => item.paid || item.settledAt)
+        const paid = paidItems.reduce((sum, item) => sum + item.amount, 0)
+        const paidCount = paidItems.length
         const allPaid = paidCount === period.items.length
 
         return (
@@ -56,30 +64,45 @@ export function HistorySection({ history }: { history: PeriodSnapshot[] }) {
               </div>
             </AccordionTrigger>
             <AccordionContent>
-              <ul className="grid gap-1 pb-2">
-                {period.items.map((item) => (
-                  <li
-                    key={item.paymentId}
-                    className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm"
-                  >
-                    <span
-                      className={cn(
-                        'flex size-6 shrink-0 items-center justify-center rounded-full',
-                        item.paid
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                          : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-                      )}
-                      aria-label={item.paid ? 'Было оплачено' : 'Не было оплачено'}
+              <ul className="grid grid-cols-1 gap-1 pb-2">
+                {period.items.map((item) => {
+                  const isPaid = item.paid || Boolean(item.settledAt)
+                  const canSettle = period.key < periodKey && !item.paid
+                  return (
+                    <li
+                      key={item.paymentId}
+                        className="flex items-center gap-2 rounded-lg px-1 py-2 text-sm sm:gap-3 sm:px-2"
                     >
-                      {item.paid ? <Check className="size-4" /> : <X className="size-4" />}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">
-                      {item.name}
-                      <span className="ml-2 text-xs text-muted-foreground">до {item.dueDay}-го</span>
-                    </span>
-                    <span className="shrink-0 font-medium tabular-nums">{formatMoney(item.amount)}</span>
-                  </li>
-                ))}
+                      <span
+                        className={cn(
+                          'flex size-6 shrink-0 items-center justify-center rounded-full',
+                          isPaid
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                            : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+                        )}
+                        aria-label={isPaid ? 'Оплачено' : 'Не оплачено'}
+                      >
+                        {isPaid ? <Check className="size-4" /> : <X className="size-4" />}
+                      </span>
+                        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                        {item.name}
+                        <span className="ml-2 text-xs text-muted-foreground">до {item.dueDay}-го</span>
+                      </span>
+                      <span className="shrink-0 font-medium tabular-nums">{formatMoney(item.amount)}</span>
+                      {canSettle && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          aria-label={`${item.settledAt ? 'Снять отметку о погашении' : 'Отметить долг погашенным'}: ${item.name}`}
+                          onClick={() => onSettle(period.key, item.paymentId, !item.settledAt)}
+                        >
+                          {item.settledAt ? 'Отменить' : 'Погашен'}
+                        </Button>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
               <p className="border-t px-2 py-2 text-xs text-muted-foreground">
                 {period.items.length} {pluralPayments(period.items.length)} · оплачено {formatMoney(paid)} из{' '}

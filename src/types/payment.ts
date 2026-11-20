@@ -15,6 +15,7 @@ export interface HistoryItem {
   dueDay: number
   paid: boolean
   paidAt?: string
+  settledAt?: string
 }
 
 export interface PeriodSnapshot {

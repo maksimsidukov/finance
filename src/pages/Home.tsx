@@ -21,6 +21,7 @@ export default function Home() {
     updatePayment,
     deletePayment,
     togglePaid,
+    setHistoryPaymentSettled,
     startNewPeriod,
   } = usePayments()
 
@@ -66,11 +67,11 @@ export default function Home() {
         </TabsContent>
 
         <TabsContent value="history">
-          <HistorySection history={history} />
+          <HistorySection history={history} periodKey={periodKey} onSettle={setHistoryPaymentSettled} />
         </TabsContent>
 
         <TabsContent value="salary">
-          <SalarySection payments={payments} paidMap={paidMap} periodKey={periodKey} />
+          <SalarySection payments={payments} paidMap={paidMap} periodKey={periodKey} history={history} />
         </TabsContent>
       </Tabs>
 

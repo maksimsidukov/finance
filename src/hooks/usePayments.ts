@@ -136,6 +136,21 @@ export function usePayments() {
     })
   }, [])
 
+  const setHistoryPaymentSettled = useCallback((key: string, paymentId: string, settled: boolean) => {
+    const settledAt = settled ? new Date().toISOString() : undefined
+    setState((s) => ({
+      ...s,
+      history: s.history.map((period) => period.key === key
+        ? {
+            ...period,
+            items: period.items.map((item) => item.paymentId === paymentId && !item.paid
+              ? { ...item, settledAt }
+              : item),
+          }
+        : period),
+    }))
+  }, [])
+
   /** Вручную закрыть текущий период и начать заново */
   const startNewPeriod = useCallback(() => {
     setState((s) => {
@@ -174,6 +189,7 @@ export function usePayments() {
     updatePayment,
     deletePayment,
     togglePaid,
+    setHistoryPaymentSettled,
     startNewPeriod,
   }
 }

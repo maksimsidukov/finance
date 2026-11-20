@@ -50,7 +50,7 @@ function NumberField({
   )
 }
 
-export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPayments) {
+export function SalarySection({ payments, paidMap, periodKey, history }: SalaryBudgetPayments) {
   const { settings, update, addBonus, removeBonus, saveSalaryChange, removeSalaryChange } = useSalarySettings()
   const [today, setToday] = useState(() => new Date().setHours(0, 0, 0, 0))
 
@@ -68,7 +68,7 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
   const hasSalaryHistory = settings.salaryChanges.length > 0
   const year = date.getFullYear()
   const payouts = calcPayouts(settings, year)
-  const budget = calcNextSalaryBudget(payouts, { payments, paidMap, periodKey }, date)
+  const budget = calcNextSalaryBudget(payouts, { payments, paidMap, periodKey, history }, date)
   const annual = summarizePayouts(payouts.filter((payout) => payout.date.getFullYear() === year))
   const months = Array.from({ length: 12 }, (_, index) => {
     const month = new Date(year, date.getMonth() + index, 1)
@@ -91,24 +91,28 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
               {formatMoney(budget.net)}
               <span className="ml-2 text-base font-normal text-muted-foreground">на руки</span>
             </p>
-            {budget.nextDate ? (
+            {(budget.nextDate || budget.duePayments.length > 0) ? (
               <div className="mt-4 grid gap-2 border-t pt-4 text-sm">
                 <div className="flex items-baseline justify-between gap-3">
                   <h3 className="font-medium">Обязательные платежи</h3>
                   <span className="shrink-0 font-medium tabular-nums">{formatMoney(budget.dueTotal)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Неоплаченные с этой выплаты до следующей · {formatDate(budget.nextDate.toISOString())}
+                  {budget.nextDate
+                    ? `Долги и неоплаченные платежи до следующей выплаты · ${formatDate(budget.nextDate.toISOString())}`
+                    : 'Долги и неоплаченные платежи к дате выплаты'}
                 </p>
                 {budget.duePayments.length > 0 && (
                   <ul className="grid gap-2 py-1">
-                    {budget.duePayments.map(({ payment, dueDate }) => (
-                      <li key={`${payment.id}-${dueDate.getTime()}`} className="flex items-start justify-between gap-3">
+                    {budget.duePayments.map(({ key, name, amount, dueDate }) => (
+                      <li key={key} className="flex items-start justify-between gap-3">
                         <div className="min-w-0 break-words">
-                          <div>{payment.name}</div>
-                          <div className="text-xs text-muted-foreground">{formatDate(dueDate.toISOString())}</div>
+                          <div>{name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {dueDate < date && 'Просрочен · '}{formatDate(dueDate.toISOString())}
+                          </div>
                         </div>
-                        <span className="shrink-0 tabular-nums">{formatMoney(payment.amount)}</span>
+                        <span className="shrink-0 tabular-nums">{formatMoney(amount)}</span>
                       </li>
                     ))}
                   </ul>
