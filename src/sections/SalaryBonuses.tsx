@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatDate, formatMoney } from '@/lib/format'
@@ -34,24 +35,33 @@ export function SalaryBonuses({ payouts, onAdd, onRemove }: SalaryBonusesProps) 
 
   return (
     <section aria-labelledby="salary-bonuses-heading" className="min-w-0 rounded-2xl border bg-card p-5 shadow-sm">
-      <h2 id="salary-bonuses-heading" className="font-medium">Премии</h2>
-      <form onSubmit={submit} className="mt-3 grid gap-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="grid min-w-0 gap-2">
-            <Label htmlFor="bonus-date">Дата выплаты премии</Label>
-            <Input id="bonus-date" type="date" min="2025-01-01" max="9999-12-31" required value={date} onChange={(event) => setDate(event.target.value)} />
-          </div>
-          <div className="grid min-w-0 gap-2">
-            <Label htmlFor="bonus-gross">Премия до НДФЛ, ₽</Label>
-            <Input id="bonus-gross" inputMode="decimal" required value={amount} onChange={(event) => setAmount(event.target.value)} />
-          </div>
+      <Collapsible>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="salary-bonuses-heading" className="font-medium">Премии</h2>
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="group">
+              Добавить премию
+              <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
+            </Button>
+          </CollapsibleTrigger>
         </div>
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" variant="outline" className="justify-self-start">
-          <Plus className="size-4" />
-          Добавить премию
-        </Button>
-      </form>
+        <CollapsibleContent>
+          <form onSubmit={submit} className="mt-3 grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid min-w-0 gap-2">
+                <Label htmlFor="bonus-date">Дата выплаты премии</Label>
+                <Input id="bonus-date" type="date" min="2025-01-01" max="9999-12-31" required value={date} onChange={(event) => setDate(event.target.value)} />
+              </div>
+              <div className="grid min-w-0 gap-2">
+                <Label htmlFor="bonus-gross">Премия до НДФЛ, ₽</Label>
+                <Input id="bonus-gross" inputMode="decimal" required value={amount} onChange={(event) => setAmount(event.target.value)} />
+              </div>
+            </div>
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" className="justify-self-start">Сохранить премию</Button>
+          </form>
+        </CollapsibleContent>
+      </Collapsible>
 
       {payouts.length > 0 && (
         <ul className="mt-4 grid gap-3 border-t pt-4 text-sm">
