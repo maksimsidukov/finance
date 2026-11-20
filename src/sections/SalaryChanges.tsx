@@ -7,12 +7,19 @@ import { formatDate, formatMoney } from '@/lib/format'
 import type { SalaryChange } from '@/lib/salary'
 
 interface SalaryChangesProps {
+  baseGross: number
   changes: SalaryChange[]
   onSave: (change: SalaryChange) => void
   onRemove: (date: string) => void
 }
 
-export function SalaryChanges({ changes, onSave, onRemove }: SalaryChangesProps) {
+const changePercent = new Intl.NumberFormat('ru-RU', {
+  style: 'percent',
+  maximumFractionDigits: 2,
+  signDisplay: 'exceptZero',
+})
+
+export function SalaryChanges({ baseGross, changes, onSave, onRemove }: SalaryChangesProps) {
   const [date, setDate] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
@@ -54,11 +61,23 @@ export function SalaryChanges({ changes, onSave, onRemove }: SalaryChangesProps)
 
       {changes.length > 0 && (
         <ul className="mt-3 grid gap-1 text-sm">
-          {changes.map((change) => {
+          {changes.map((change, index) => {
             const label = formatDate(`${change.date}T00:00:00`)
+            const previousGross = changes[index - 1]?.gross ?? baseGross
+            const delta = (Math.round(change.gross * 100) - Math.round(previousGross * 100)) / 100
             return (
               <li key={change.date} className="flex items-center justify-between gap-2">
-                <span className="min-w-0 [overflow-wrap:anywhere]">С {label} · {formatMoney(change.gross)}</span>
+                <div className="min-w-0 [overflow-wrap:anywhere]">
+                  <p>С {label} · {formatMoney(change.gross)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {delta === 0 ? 'Без изменений' : (
+                      <>
+                        {delta > 0 ? '+' : ''}{formatMoney(delta)}
+                        {previousGross > 0 && ` (${changePercent.format(delta / previousGross)})`}
+                      </>
+                    )}
+                  </p>
+                </div>
                 <Button type="button" variant="ghost" size="icon" aria-label={`Удалить изменение оклада с ${label}`} onClick={() => onRemove(change.date)}>
                   <Trash2 className="size-4 text-muted-foreground" />
                 </Button>

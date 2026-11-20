@@ -236,7 +236,7 @@ export function SalarySection({ payments, paidMap, periodKey }: SalaryBudgetPaym
               onChange={(v) => update({ grossSalary: v })}
             />
           )}
-          <SalaryChanges changes={settings.salaryChanges} onSave={saveSalaryChange} onRemove={removeSalaryChange} />
+          <SalaryChanges baseGross={settings.grossSalary} changes={settings.salaryChanges} onSave={saveSalaryChange} onRemove={removeSalaryChange} />
         </CollapsibleContent>
       </Collapsible>
 
